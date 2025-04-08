@@ -5,6 +5,7 @@ import json
 from transformers import MarianMTModel, MarianTokenizer
 import os
 import sentencepiece as spm
+import re
 
 
 # 🔁 Tạo từ điển và lưu file JSON (chạy khi khởi động)
@@ -26,7 +27,15 @@ def fetch_and_save_slang_dict():
         json.dump(slang_dict, f, ensure_ascii=False, indent=4)
     return slang_dict
 
-# Hàm thu thập slang mới từ website thứ hai
+
+# Cắt bỏ chỉ mục và phần tiếng Anh sau
+def clean_term(text):
+    # Xoá chỉ mục đầu dòng và phần tiếng Anh
+    text = re.sub(r'^\.?\s*\d+(\.\d+)*\s*', '', text)        # ví dụ: ". 1.1. " hoặc "1.2. " → ""
+    text = re.sub(r'\s+[-–—]\s+.*$', '', text)               # xóa sau dấu gạch: " – tiếng Anh" → ""
+    text = re.sub(r'\s*\(.*?\)', '', text)                   # xóa phần trong ngoặc ( )
+    return text.strip().lower()
+
 def fetch_slang_from_learningvietnamese():
     url = "https://learningvietnamese.edu.vn/blog/speak-vietnamese/vietnamese-slang-words/?lang=en"
     response = requests.get(url)
@@ -36,41 +45,33 @@ def fetch_slang_from_learningvietnamese():
     headers = soup.find_all("h3")
     
     for header in headers:
-        term = header.text.strip()
+        term = clean_term(header.text.strip())
         explanation_tag = header.find_next_sibling("p")
         if explanation_tag:
             explanation = explanation_tag.text.strip()
             if term and explanation:
-                slang_dict[term.lower()] = explanation
+                slang_dict[term] = explanation
     return slang_dict
 
-# Gộp từ điển mới vào json cũ
 def update_slang_json():
     filename = "slang_dict.json"
     
-    # Load từ điển cũ (nếu có)
     if os.path.exists(filename):
         with open(filename, "r", encoding="utf-8") as f:
             old_dict = json.load(f)
     else:
         old_dict = {}
     
-    # Từ mới từ web
     new_dict = fetch_slang_from_learningvietnamese()
-    
-    # Gộp từ điển
     combined = {**old_dict, **new_dict}
     
-    # Lưu lại
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(combined, f, ensure_ascii=False, indent=4)
     return combined
 
-# Gọi hàm để cập nhật
 if __name__ == "__main__":
     updated_dict = update_slang_json()
     print(f"✅ Đã cập nhật {len(updated_dict)} từ lóng vào slang_dict.json")
-
 
 
 # 🧠 Load model
@@ -108,7 +109,7 @@ if slang_input:
         vi_meaning = slang_dict[slang_input]
         en_translation = translate_vi_to_en(vi_meaning, tokenizer, model)
 
-        st.markdown(f"### 📝 Nghĩa tiếng Việt:\n> {vi_meaning}")
-        st.markdown(f"### 🌐 English Translation:\n> {en_translation}")
+        st.markdown(f"### 🌐 English Translation:\n> {vi_meaning}")
+        st.markdown(f"### 📝 Nghĩa tiếng Việt:\n> {en_translation}")
     else:
         st.warning("❗ Không tìm thấy từ lóng này trong từ điển.")
